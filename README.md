@@ -45,6 +45,10 @@
 - 使用HttpOnly cookie存储用户ID
 - 防止直接访问配置文件
 
+## 应用注册
+[LinuxDo Connect](https://connect.linux.do/)
+回调地址填写http(s)://你的域名/dlapi.php
+
 ## 自定义选项
 
 如需自定义登录页面样式，可以修改 `index_integration.php` 文件中的 `showLoginPage()` 函数。

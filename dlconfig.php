@@ -13,8 +13,8 @@ if (!defined('OAUTH_LOADED')) {
 // OAuth应用信息
 $oauth_config = [
     // 应用凭证
-    'client_id' => 'O4e89zTwtJ7td8En3KIjZHAYCwqZh3Ft',
-    'client_secret' => 'A6KPhaJxUTfPcazbvESupdsW9XumyfP3',
+    'client_id' => 'xxxxxxxxxxx',
+    'client_secret' => 'xxxxxxxxxxxx',
     
     // OAuth端点
     'authorize_url' => 'https://connect.linux.do/oauth2/authorize',
