@@ -30,50 +30,87 @@ function checkOAuthLogin() {
 // 显示登录页面
 function showLoginPage() {
     echo '<!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>登录认证</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background-color: #fff;
-                margin: 0;
-                padding: 0;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                height: 100vh;
-            }
-            .login-container {
-                text-align: center;
-                padding: 30px;
-                border-radius: 5px;
-            }
-            .login-button {
-                display: inline-block;
-                padding: 12px 24px;
-                background-color: #337ab7;
-                color: white;
-                text-decoration: none;
-                border-radius: 4px;
-                font-size: 16px;
-                border: none;
-                cursor: pointer;
-                transition: background-color 0.3s;
-            }
-            .login-button:hover {
-                background-color: #286090;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="login-container">
-            <a href="dlapi.php" class="login-button">登录</a>
-        </div>
-    </body>
-    </html>';
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录认证</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #fff;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            position: relative;
+        }
+        .login-container {
+            text-align: center; /* 确保内容居中 */
+            padding: 30px;
+            border-radius: 5px;
+        }
+        .login-container img {
+            display: block;
+            margin: 0 auto; /* 图片水平居中 */
+            width: 150px; /* 设置图片宽度 */
+            height: auto; /* 保持图片纵横比 */
+            margin-bottom: 20px; /* 使按钮和图片间有间距 */
+        }
+        .login-button {
+            display: inline-block;
+            margin-top: 0; /* 防止不必要间隙 */
+            padding: 12px 24px;
+            background-color: #337ab7;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .login-button:hover {
+            background-color: #286090;
+        }
+        .github-link {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            text-decoration: none;
+            font-size: 16px;
+            color: #333;
+            display: flex;
+            align-items: center;
+        }
+        .github-link img {
+            width: 24px; /* 设置 GitHub 图标大小 */
+            height: 24px;
+            margin-right: 8px;
+        }
+        .github-link:hover {
+            color: #337ab7;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <!-- Logo 图片 -->
+        <img src="https://assets.qninq.cn/qning/tYM0Zofg.webp" alt="Logo">
+        
+        <!-- 登录按钮 -->
+        <a href="dlapi.php" class="login-button">Linux.Do登录</a>
+    </div>
+    
+    <!-- GitHub 超链接 -->
+    <a href="https://github.com/wang4386/php-oauth-Linux.Do" class="github-link" target="_blank">
+        <img src="https://assets.qninq.cn/qning/PmajGbs1.webp" alt="GitHub Logo">
+        GitHub
+    </a>
+</body>
+</html>';
     exit;
 }
 
