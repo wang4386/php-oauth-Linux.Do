@@ -1,0 +1,12 @@
+# 忽略由安装程序生成的配置文件
+config.php
+
+# 忽略本地开发环境文件
+.env
+.DS_Store
+
+# 忽略IDE和编辑器目录/文件
+.idea/
+.vscode/
+*.swp
+*.swo

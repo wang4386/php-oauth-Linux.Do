@@ -1,206 +1,130 @@
 <?php
 /**
- * OAuth API处理文件
- * 处理OAuth回调和用户认证逻辑
+ * OAuth 回调处理程序 (dlapi.php)
+ *
+ * 此文件处理从 Linux.do 返回的请求，
+ * 验证用户，更新数据库，并设置登录 Cookie。
  */
 
-// 启动会话
-session_start();
+// 引入 Auth Gate 来初始化环境。
+// auth_gate 会加载配置、启动会话并提供所有必要的函数。
+require_once 'auth_gate.php';
 
-// 定义常量，表示已加载OAuth
-define('OAUTH_LOADED', true);
+// 如果执行到这里，说明 auth_gate 已确认我们处于已安装状态。
 
-// 引入配置文件
-require_once 'dlconfig.php';
+/**
+ * 处理 OAuth 授权流程的启动
+ */
+function initiate_auth_flow() {
+    global $auth_config;
 
-// 错误处理函数
-function handleError($message) {
-    echo '<!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>认证错误</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background-color: #fff;
-                color: #333;
-                margin: 0;
-                padding: 20px;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 100vh;
-                text-align: center;
-            }
-            .error-container {
-                max-width: 500px;
-                padding: 20px;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                background-color: #f9f9f9;
-            }
-            .error-message {
-                color: #d9534f;
-                margin-bottom: 20px;
-            }
-            .back-button {
-                display: inline-block;
-                padding: 10px 20px;
-                background-color: #337ab7;
-                color: white;
-                text-decoration: none;
-                border-radius: 4px;
-                border: none;
-                cursor: pointer;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="error-container">
-            <h2>认证错误</h2>
-            <p class="error-message">' . htmlspecialchars($message) . '</p>
-            <a href="/" class="back-button">返回首页</a>
-        </div>
-        <script>
-            alert("' . addslashes($message) . '");
-        </script>
-    </body>
-    </html>';
-    exit;
-}
-
-// 发起OAuth授权请求
-function initiateOAuth() {
-    global $oauth_config;
+    // (可选) 保存用户最初想要访问的页面 URL
+    if (isset($_SERVER['HTTP_REFERER'])) {
+        // 解析来源 URL，确保它不是 dlapi.php 本身
+        $referer_path = parse_url($_SERVER['HTTP_REFERER'], PHP_URL_PATH);
+        if (basename($referer_path) !== 'dlapi.php') {
+            $_SESSION['auth_return_to'] = $_SERVER['HTTP_REFERER'];
+        }
+    }
     
-    // 生成随机state参数，防止CSRF攻击
+    // 生成随机 state 参数，防止 CSRF 攻击
     $state = bin2hex(random_bytes(16));
-    $_SESSION[$oauth_config['state_key']] = $state;
+    $_SESSION['oauth_state'] = $state;
     
-    // 构建授权URL
-    $auth_url = $oauth_config['authorize_url'] . '?' . http_build_query([
-        'client_id' => $oauth_config['client_id'],
-        'redirect_uri' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]/" . $oauth_config['redirect_uri'],
+    // 构建授权 URL
+    $params = [
+        'client_id' => $auth_config['oauth']['client_id'],
+        'redirect_uri' => $auth_config['oauth']['redirect_uri'],
         'response_type' => 'code',
         'state' => $state,
-        'scope' => 'openid profile'
-    ]);
+        'scope' => 'openid profile email' // 'profile' and 'email' may not be standard, but good to have
+    ];
+    
+    $auth_url = 'https://connect.linux.do/oauth2/authorize?' . http_build_query($params);
     
     // 重定向到授权页面
     header('Location: ' . $auth_url);
     exit;
 }
 
-// 处理OAuth回调
-function handleCallback() {
-    global $oauth_config;
+/**
+ * 处理从 OAuth 提供商返回的回调
+ */
+function handle_auth_callback() {
+    global $auth_config;
     
-    // 检查是否有错误参数
-    if (isset($_GET['error'])) {
-        handleError('授权失败: ' . $_GET['error']);
-    }
+    // 安全检查
+    if (isset($_GET['error'])) show_auth_error_page('授权失败: ' . htmlspecialchars($_GET['error']));
+    if (!isset($_GET['code']) || !isset($_GET['state'])) show_auth_error_page('无效的回调请求');
+    if (!isset($_SESSION['oauth_state']) || $_GET['state'] !== $_SESSION['oauth_state']) show_auth_error_page('安全验证失败 (CSRF state mismatch)');
+    unset($_SESSION['oauth_state']);
     
-    // 检查必要参数
-    if (!isset($_GET['code']) || !isset($_GET['state'])) {
-        handleError('无效的回调请求');
-    }
-    
-    // 验证state参数，防止CSRF攻击
-    if (!isset($_SESSION[$oauth_config['state_key']]) || $_GET['state'] !== $_SESSION[$oauth_config['state_key']]) {
-        handleError('安全验证失败');
-    }
-    
-    // 清除state会话变量
-    unset($_SESSION[$oauth_config['state_key']]);
-    
-    // 获取授权码
-    $code = $_GET['code'];
-    
-    // 构建获取访问令牌的请求
-    $token_url = $oauth_config['token_url'];
-    $token_data = [
+    // 使用授权码获取访问令牌
+    $token_response = auth_http_post('https://connect.linux.do/oauth2/token', [
         'grant_type' => 'authorization_code',
-        'client_id' => $oauth_config['client_id'],
-        'client_secret' => $oauth_config['client_secret'],
-        'redirect_uri' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]/" . $oauth_config['redirect_uri'],
-        'code' => $code
-    ];
-    
-    // 发送请求获取访问令牌
-    $ch = curl_init($token_url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($token_data));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
-    
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
-    // 检查响应
-    if ($http_code !== 200) {
-        handleError('获取访问令牌失败');
-    }
-    
-    // 解析响应
-    $token_response = json_decode($response, true);
-    if (!isset($token_response['access_token'])) {
-        handleError('无效的访问令牌响应');
-    }
-    
-    // 获取访问令牌
-    $access_token = $token_response['access_token'];
-    
-    // 获取用户信息
-    $userinfo_url = $oauth_config['userinfo_url'];
-    $ch = curl_init($userinfo_url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: Bearer ' . $access_token]);
-    
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
-    // 检查响应
-    if ($http_code !== 200) {
-        handleError('获取用户信息失败');
-    }
-    
-    // 解析用户信息
-    $user_info = json_decode($response, true);
-    if (!isset($user_info['id']) || !isset($user_info['trust_level'])) {
-        handleError('无效的用户信息响应');
-    }
-    
+        'client_id' => $auth_config['oauth']['client_id'],
+        'client_secret' => $auth_config['oauth']['client_secret'],
+        'redirect_uri' => $auth_config['oauth']['redirect_uri'],
+        'code' => $_GET['code']
+    ]);
+    if (!isset($token_response['access_token'])) show_auth_error_page('获取访问令牌失败: ' . ($token_response['error_description'] ?? '未知错误'));
+
+    // 使用访问令牌获取用户信息
+    $user_info = auth_http_get('https://connect.linux.do/api/user', $token_response['access_token']);
+    if (!isset($user_info['id']) || !isset($user_info['trust_level'])) show_auth_error_page('获取用户信息失败或响应格式无效');
+
     // 检查信任等级
-    if ($user_info['trust_level'] < $oauth_config['min_trust_level']) {
-        handleError('您的信任等级不足，无法访问此内容');
+    if ($user_info['trust_level'] < $auth_config['min_trust_level']) {
+        show_auth_error_page('您的信任等级 (' . (int)$user_info['trust_level'] . ') 不足，需要达到 ' . (int)$auth_config['min_trust_level'] . ' 级才能访问。');
     }
-    
-    // 设置用户ID cookie
+
+    // --- 数据库操作 ---
+    try {
+        $db = get_auth_db();
+        $stmt = $db->prepare("SELECT * FROM auth_users WHERE l_user_id = ?");
+        $stmt->execute([$user_info['id']]);
+        $user = $stmt->fetch();
+        
+        $now = date('Y-m-d H:i:s');
+        $avatar_url_template = $user_info['avatar_template'] ?? 'https://www.gravatar.com/avatar/{hash}?s={size}&d=identicon';
+        
+        if ($user) { // 更新现有用户
+            $stmt = $db->prepare("UPDATE auth_users SET username = ?, trust_level = ?, last_login_at = ?, avatar_url = ? WHERE id = ?");
+            $stmt->execute([$user_info['username'], $user_info['trust_level'], $now, $avatar_url_template, $user['id']]);
+        } else { // 插入新用户
+            $stmt = $db->prepare("INSERT INTO auth_users (l_user_id, username, trust_level, first_login_at, last_login_at, avatar_url) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$user_info['id'], $user_info['username'], $user_info['trust_level'], $now, $now, $avatar_url_template]);
+        }
+    } catch (Exception $e) {
+        show_auth_error_page("数据库操作失败: " . $e->getMessage());
+    }
+
+    // --- 设置登录 Cookie ---
     setcookie(
-        $oauth_config['cookie_name'],
+        $auth_config['cookie_name'],
         $user_info['id'],
-        time() + $oauth_config['cookie_expire'],
-        $oauth_config['cookie_path'],
-        '',
-        isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
-        true
+        [
+            'expires' => time() + $auth_config['cookie_expire'],
+            'path' => $auth_config['cookie_path'],
+            'domain' => '', // 当前域名
+            'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]
     );
     
-    // 重定向到首页
-    header('Location: /');
+    // --- 重定向到原始页面或首页 ---
+    $return_to = $_SESSION['auth_return_to'] ?? '/';
+    unset($_SESSION['auth_return_to']);
+    header('Location: ' . $return_to);
     exit;
 }
 
-// 主逻辑
+
+// --- 主路由 ---
+// 如果URL中有 'code' 参数, 说明是回调。否则, 是发起授权请求。
 if (isset($_GET['code'])) {
-    // 处理OAuth回调
-    handleCallback();
+    handle_auth_callback();
 } else {
-    // 发起OAuth授权请求
-    initiateOAuth();
+    initiate_auth_flow();
 }
-?>
